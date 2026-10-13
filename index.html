@@ -15,3 +15,335 @@ h1{font-size:1.7rem;margin:.2em 0 .1em;letter-spacing:-.01em}
 .card,details{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:12px 0}
 details>summary{cursor:pointer;font-weight:600}
 details[open]>summary{margin-bottom:10px}
+label{display:block;font-weight:600;margin:10px 0 4px}
+input[type=text],input[type=password],input[type=number],select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{font-family:var(--mono);font-size:.85rem;line-height:1.45;resize:vertical}
+#dork{font-size:1.05rem;font-family:var(--mono)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.hint{color:var(--mute);font-size:.85rem;margin:4px 0}
+.chk{display:flex;gap:8px;align-items:flex-start;font-weight:400;margin:10px 0}
+.chk input{margin-top:5px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
+button{font:inherit;font-weight:600;padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.p{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+button.big{padding:12px 18px}
+button:disabled{opacity:.45;cursor:not-allowed}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}
+.stat{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.stat b{display:block;font-size:1.3rem;font-variant-numeric:tabular-nums}
+.stat span{color:var(--mute);font-size:.8rem}
+#prog{height:12px;background:var(--bg);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+#bar{height:100%;width:0;background:var(--acc);transition:width .25s}
+#status{margin:8px 0;font-weight:600}
+.msg{border-radius:8px;padding:10px 12px;margin:10px 0;border:1px solid var(--line)}
+.msg.ok{background:var(--ok-bg);color:var(--ok)}
+.msg.err{background:var(--err-bg);color:var(--err)}
+.msg.warn{background:var(--warn-bg);color:var(--warn)}
+.note{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:10px 12px;font-size:.9rem}
+ol{padding-left:1.2em;margin:.3em 0}
+code{font-family:var(--mono);font-size:.85em}
+@media (prefers-reduced-motion:reduce){#bar{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>Google Dork Link Collector</h1>
+<p class="sub">Run a dork through the official Google Programmable Search API, then view, copy, and download the result URLs.</p>
+
+<div class="note"><b>Limits:</b> the free tier allows about 100 queries per day and paid usage may apply. Each dork returns at most 100 results (10 per page). This tool cannot collect every URL on the internet, and results may differ from google.com.</div>
+
+<details id="settings">
+<summary>Settings: API credentials</summary>
+<label for="provider">Search provider</label>
+<select id="provider"><option value="google">Google Programmable Search JSON API</option></select>
+<div class="row">
+<div><label for="apiKey">API key</label><input id="apiKey" type="password" autocomplete="off" spellcheck="false"></div>
+<div><label for="cx">Search engine ID (cx)</label><input id="cx" type="text" autocomplete="off" spellcheck="false"></div>
+</div>
+<label class="chk"><input type="checkbox" id="remember"><span>Remember credentials in this browser (localStorage). Anyone using this browser can read them. Leave unchecked on shared computers.</span></label>
+<p class="hint">Credentials stay in memory unless you tick the box, and are sent only to googleapis.com.</p>
+</details>
+
+<details id="howto">
+<summary>How to set up</summary>
+<ol>
+<li>Create a Programmable Search Engine at <code>programmablesearchengine.google.com</code> and set it to <b>search the entire web</b>. Copy its Search engine ID (cx).</li>
+<li>In the Google Cloud Console, enable the <b>Custom Search API</b> for a project.</li>
+<li>Under APIs &amp; Services &gt; Credentials, create an <b>API key</b>.</li>
+<li>Paste the key and cx into Settings above, enter a dork, and press Start Collecting.</li>
+</ol>
+<p class="hint">Use of the API is subject to Google's terms of service. Collected URLs are never visited or crawled by this page. No queries or results are stored.</p>
+</details>
+
+<section class="card">
+<label for="dork">Enter Your Google Dork</label>
+<input id="dork" type="text" placeholder='site:example.com filetype:pdf "annual report"' autocomplete="off" spellcheck="false">
+<p class="hint">Paste a raw dork or a full Google search URL (the q parameter is extracted). The query is sent exactly as typed.</p>
+<div class="row">
+<div><label for="max">Maximum Results</label><input id="max" type="number" min="1" max="100" value="100"></div>
+<div><label for="per">Results Per Page</label><input id="per" type="number" min="1" max="10" value="10"></div>
+</div>
+<p class="hint">Provider limits: 1 to 100 results total, 1 to 10 per page. Values outside the range are clamped.</p>
+<label class="chk"><input type="checkbox" id="strip"><span>Remove tracking parameters (utm_*, gclid, fbclid) from URLs</span></label>
+
+<div class="btns">
+<button id="start" class="p big">Start Collecting</button>
+<button id="stop" disabled>Stop Collection</button>
+<button id="copyAll" class="p big" disabled>Copy All Links</button>
+<button id="dlTxt" class="p big" disabled>Download TXT</button>
+<button id="selAll" disabled>Select All</button>
+<button id="clear" disabled>Clear Results</button>
+</div>
+<div id="msg" class="msg" hidden role="status" aria-live="polite"></div>
+</section>
+
+<section class="card">
+<div class="stats">
+<div class="stat"><b id="sUrls">0</b><span>Unique URLs</span></div>
+<div class="stat"><b id="sPages">0</b><span>Pages processed</span></div>
+<div class="stat"><b id="sDupes">0</b><span>Duplicates removed</span></div>
+<div class="stat"><b id="sMax">-</b><span>Requested maximum</span></div>
+</div>
+<div id="prog" role="progressbar" aria-label="Collection progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="bar"></div></div>
+<div id="status">Ready to collect</div>
+<label for="out">Results (one URL per line)</label>
+<textarea id="out" rows="16" spellcheck="false" placeholder="Collected URLs appear here."></textarea>
+<div class="btns">
+<button id="csv" disabled>Download CSV</button>
+<button id="json" disabled>Download JSON</button>
+<button id="copyVis" disabled>Copy Visible Links</button>
+</div>
+</section>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString();
+const LS = 'gdlc-credentials';
+
+/* ---------- Provider adapters (browser/CORS-capable only) ----------
+   page() returns { items:[{url,title}], hasNext }.
+   It throws { http:true, status, message, reason, retryAfter } on HTTP errors,
+   and lets network errors (TypeError) and aborts propagate. */
+const PROVIDERS = {
+  google: {
+    cap: 100, perPage: 10,
+    async page({ key, cx, q, start, num, signal }) {
+      const u = new URL('https://www.googleapis.com/customsearch/v1');
+      u.search = new URLSearchParams({ key, cx, q, start, num }).toString();
+      const r = await fetch(u, { signal });
+      if (!r.ok) {
+        let message = r.statusText || 'Request failed', reason = '';
+        try { const j = await r.json(); message = j.error.message || message; reason = (j.error.errors && j.error.errors[0] && j.error.errors[0].reason) || ''; } catch (e) {}
+        throw { http: true, status: r.status, message, reason, retryAfter: parseFloat(r.headers.get('Retry-After')) || 0 };
+      }
+      const j = await r.json();
+      return { items: (j.items || []).map(i => ({ url: i.link, title: i.title || '' })), hasNext: !!(j.queries && j.queries.nextPage) };
+    }
+  }
+};
+
+/* ---------- State: the Map is the single source of truth ---------- */
+const map = new Map(); // normalized key -> { url, original, title }
+let dupes = 0, pages = 0, running = false, ctl = null, effMax = 0, reqMax = 0;
+
+/* ---------- UI helpers ---------- */
+let msgTimer = 0;
+function msg(text, type) {
+  const m = $('msg');
+  clearTimeout(msgTimer);
+  m.textContent = text; m.className = 'msg ' + type; m.hidden = false;
+  m.setAttribute('role', type === 'err' ? 'alert' : 'status');
+  if (type === 'ok') msgTimer = setTimeout(() => { m.hidden = true; }, 6000);
+}
+const setStatus = s => { $('status').textContent = s; };
+const text = () => [...map.values()].map(e => e.url).join('\n');
+
+let raf = 0;
+function render() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; paint(); }); }
+function paint() {
+  const t = text();
+  if ($('out').value !== t) $('out').value = t;
+  $('sUrls').textContent = fmt(map.size);
+  $('sPages').textContent = fmt(pages);
+  $('sDupes').textContent = fmt(dupes);
+  $('sMax').textContent = reqMax ? fmt(reqMax) + (effMax < reqMax ? ' (cap ' + fmt(effMax) + ')' : '') : '-';
+  const pct = effMax ? Math.min(100, Math.floor(map.size / effMax * 100)) : 0;
+  $('bar').style.width = pct + '%';
+  $('prog').setAttribute('aria-valuenow', pct);
+  const has = map.size > 0;
+  for (const id of ['copyAll', 'dlTxt', 'selAll', 'clear', 'csv', 'json', 'copyVis']) $(id).disabled = !has;
+  $('start').disabled = running; $('stop').disabled = !running;
+}
+
+/* ---------- Dork parsing ---------- */
+function parseDork(raw) {
+  const s = raw.trim();
+  if (!s) throw new Error('Enter a Google dork before collecting.');
+  if (/^https?:\/\//i.test(s)) {
+    let u;
+    try { u = new URL(s); } catch (e) { throw new Error('That looks like a URL but is not valid. Paste a full Google search URL or a raw dork.'); }
+    if (/(^|\.)google\.[a-z.]+$/i.test(u.hostname)) {
+      const q = (u.searchParams.get('q') || '').trim();
+      if (!q) throw new Error('This Google search URL has no q parameter. Paste a URL like https://www.google.com/search?q=...');
+      return q;
+    }
+  }
+  return s;
+}
+
+/* ---------- URL cleaning and dedupe ---------- */
+function addItem(it) {
+  let u;
+  try { u = new URL(it.url); } catch (e) { return 'skip'; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'skip';
+  if (/(^|\.)google\.[a-z.]+$/i.test(u.hostname) && /^\/(search|url|aclk|imgres)/.test(u.pathname)) return 'skip';
+  u.hash = '';
+  const strip = $('strip').checked;
+  if (strip) for (const k of [...u.searchParams.keys()]) if (/^utm_/i.test(k) || /^(gclid|fbclid)$/i.test(k)) u.searchParams.delete(k);
+  // Scheme and host are lowercased by URL; default ports are dropped; path case and query are kept.
+  const key = u.protocol + '//' + u.host + u.pathname + u.search;
+  if (map.has(key)) return 'dup';
+  map.set(key, { url: strip ? u.href : it.url, original: it.url, title: it.title });
+  return 'added';
+}
+
+/* ---------- Collection ---------- */
+const sleep = (ms, sig) => new Promise((res, rej) => {
+  const t = setTimeout(res, ms);
+  sig.addEventListener('abort', () => { clearTimeout(t); rej(new DOMException('Aborted', 'AbortError')); }, { once: true });
+});
+const RATE = ['dailyLimitExceeded', 'quotaExceeded', 'rateLimitExceeded', 'userRateLimitExceeded'];
+
+async function withRetry(fn, sig) {
+  for (let a = 0; ; a++) {
+    try { return await fn(); }
+    catch (e) {
+      if (sig.aborted || (e && e.name === 'AbortError')) throw e;
+      const quota = e.http && (e.reason === 'dailyLimitExceeded' || e.reason === 'quotaExceeded');
+      const temp = !e.http || e.status >= 500 || e.status === 429 || (e.status === 403 && /rateLimitExceeded/i.test(e.reason));
+      if (!temp || quota || a >= 3) throw e;
+      const wait = e.retryAfter ? e.retryAfter * 1000 : Math.min(1000 * 2 ** a, 15000);
+      setStatus('Temporary error. Retrying in ' + Math.ceil(wait / 1000) + 's (attempt ' + (a + 1) + ' of 3)...');
+      await sleep(wait, sig);
+    }
+  }
+}
+
+async function startCollect() {
+  if (running) return;
+  const prov = PROVIDERS[$('provider').value];
+  const key = $('apiKey').value.trim(), cx = $('cx').value.trim();
+  if (!key || !cx) {
+    $('settings').open = true; $('howto').open = true;
+    msg('API key and Search engine ID are required. Enter them in Settings; the setup steps below explain how to get them.', 'err');
+    return;
+  }
+  let q;
+  try { q = parseDork($('dork').value); } catch (e) { msg(e.message, 'err'); return; }
+
+  const clamp = (el, lo, hi) => { let v = parseInt(el.value, 10); if (isNaN(v)) v = hi; const c = Math.min(hi, Math.max(lo, v)); const changed = c !== v; el.value = c; return [c, changed]; };
+  const [mx, c1] = clamp($('max'), 1, prov.cap), [per, c2] = clamp($('per'), 1, prov.perPage);
+  reqMax = mx; effMax = Math.min(mx, prov.cap);
+
+  try { if ($('remember').checked) localStorage.setItem(LS, JSON.stringify({ key, cx })); else localStorage.removeItem(LS); } catch (e) {}
+
+  map.clear(); dupes = 0; pages = 0; running = true; ctl = new AbortController();
+  $('msg').hidden = true;
+  if (c1 || c2) msg('Values were adjusted to the provider limits (max ' + prov.cap + ' results, ' + prov.perPage + ' per page).', 'warn');
+  setStatus('Collecting search results...'); paint();
+
+  let start = 1, exhausted = false, error = null;
+  try {
+    while (map.size < effMax && start <= prov.cap) {
+      const num = Math.min(per, prov.cap + 1 - start);
+      setStatus('Processing page ' + (pages + 1));
+      const res = await withRetry(() => prov.page({ key, cx, q, start, num, signal: ctl.signal }), ctl.signal);
+      pages++;
+      for (const it of res.items) {
+        if (map.size >= effMax) break;
+        if (addItem(it) === 'dup') dupes++;
+      }
+      start += num; render(); // each (start) page is requested only once
+      if (!res.items.length || !res.hasNext) { exhausted = true; break; }
+    }
+  } catch (e) { error = e; }
+
+  running = false;
+  const n = map.size;
+  if (error && (error.name === 'AbortError')) {
+    setStatus('Collection stopped by user');
+    msg('Stopped. Kept ' + fmt(n) + ' URLs collected so far.', 'warn');
+  } else if (error) {
+    const rate = error.http && (error.status === 429 || RATE.includes(error.reason));
+    const m = error.http ? 'Provider error (' + error.status + '): ' + error.message
+      : 'Network error: could not reach googleapis.com (' + (error.message || 'request failed') + '). Check your connection and any content blockers.';
+    setStatus(rate ? 'Rate limit reached' : n ? 'Collection completed with partial results' : 'Error: collection failed');
+    msg(m + (n ? ' Kept ' + fmt(n) + ' URLs collected so far.' : ''), 'err');
+  } else if (n === 0) {
+    setStatus('Collection completed');
+    msg('No results found for this query.', 'warn');
+  } else if (n >= effMax) {
+    setStatus('Collection completed');
+    msg('Collected ' + fmt(n) + ' unique URLs.' + (reqMax > prov.cap ? ' The provider caps results at ' + prov.cap + '.' : ''), 'ok');
+  } else {
+    setStatus('Collection completed with partial results');
+    msg('Collected ' + fmt(n) + ' of ' + fmt(effMax) + ' requested. ' + (exhausted ? 'The provider has no more results for this query.' : 'The provider limit of ' + prov.cap + ' results was reached, with ' + fmt(dupes) + ' duplicates removed.'), 'warn');
+  }
+  ctl = null; paint();
+}
+
+/* ---------- Copy / download (all from the Map) ---------- */
+async function copyText(t, okMsg) {
+  try { await navigator.clipboard.writeText(t); msg(okMsg, 'ok'); return; } catch (e) {}
+  const ta = $('out');
+  try {
+    if (t !== ta.value) ta.value = t;
+    ta.focus(); ta.select();
+    if (document.execCommand('copy')) { msg(okMsg, 'ok'); return; }
+  } catch (e) {}
+  msg('Automatic copy failed. The text is selected: press Ctrl/Cmd+C to copy it.', 'err');
+}
+function download(content, name, type) {
+  try {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    msg('Downloaded ' + name, 'ok');
+  } catch (e) { msg('Download failed: ' + e.message + '. You can still use Copy All Links.', 'err'); }
+}
+const csvCell = s => '"' + String(s).replace(/"/g, '""') + '"';
+
+/* ---------- Wiring ---------- */
+$('start').onclick = startCollect;
+$('stop').onclick = () => { if (ctl) ctl.abort(); };
+$('copyAll').onclick = () => { paint(); copyText(text(), 'Copied ' + fmt(map.size) + ' URLs to clipboard'); };
+$('dlTxt').onclick = () => download(text(), 'google-dork-links.txt', 'text/plain;charset=utf-8');
+$('selAll').onclick = () => { paint(); $('out').focus(); $('out').select(); };
+$('copyVis').onclick = () => { const v = $('out').value; copyText(v, 'Copied ' + fmt(v ? v.split('\n').filter(Boolean).length : 0) + ' visible URLs'); };
+$('csv').onclick = () => download('URL,Title\r\n' + [...map.values()].map(e => csvCell(e.url) + ',' + csvCell(e.title)).join('\r\n'), 'google-dork-links.csv', 'text/csv;charset=utf-8');
+$('json').onclick = () => download(JSON.stringify({ query: $('dork').value.trim(), count: map.size, results: [...map.values()] }, null, 2), 'google-dork-links.json', 'application/json');
+$('clear').onclick = () => {
+  if (!confirm('Clear all collected results?')) return;
+  if (running && ctl) ctl.abort();
+  map.clear(); dupes = 0; pages = 0; effMax = 0; reqMax = 0;
+  $('msg').hidden = true; setStatus('Ready to collect'); paint();
+};
+$('remember').onchange = () => { if (!$('remember').checked) { try { localStorage.removeItem(LS); } catch (e) {} } };
+$('dork').addEventListener('keydown', e => { if (e.key === 'Enter') startCollect(); });
+
+// Restore credentials only if the user opted in earlier.
+try {
+  const s = JSON.parse(localStorage.getItem(LS) || 'null');
+  if (s) { $('apiKey').value = s.key || ''; $('cx').value = s.cx || ''; $('remember').checked = true; }
+} catch (e) {}
+if (!$('apiKey').value || !$('cx').value) { $('settings').open = true; $('howto').open = true; }
+paint();
+})();
+</script>
+</body>
+</html>
